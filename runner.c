@@ -57,7 +57,7 @@ static void *threadfn(void *datav) {
   free(datav);
 
   pthread_barrier_wait(&barrier);
-  const char *read = zc_read_start(zcfile, &real_read_size);
+  const char *read = zc_read_start(zcfile, &real_read_size);  
   FAIL_IF(real_read_size != op_size, "zc_read returned wrong size - expected %zu, got %zu\n",
           op_size, real_read_size);
   FAIL_IF(memcmp(read, randdata + op_size * 3, op_size), "zc_read returned wrong contents\n");
