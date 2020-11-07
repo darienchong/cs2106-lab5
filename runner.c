@@ -244,7 +244,13 @@ int main(int argc, char *argv[]) {
 
       rewind(file1);
       const size_t expected_file_size = offset > size ? offset : size;
-      FAIL_IF(fread(scratch, 1, sizeof(scratch), file1) != expected_file_size,
+      
+      size_t fread_num_elts_read = fread(scratch, 1, sizeof(scratch), file1);
+      if (fread_num_elts_read != expected_file_size) {
+      	printf("fread returned wrong size, expected [%ld] but got [%ld].\n", expected_file_size, fread_num_elts_read);
+      }
+      
+      FAIL_IF(fread_num_elts_read != expected_file_size,
               "fread returned wrong size - did zc_write cause file to have wrong length?\n");
       // file1[0:offset) == randdata[1048576:1048576+offset)
       // file1[offset:expected_file_size) == randdata[offset:expected_file_size)
