@@ -13,6 +13,8 @@
 
 #include <semaphore.h>
 
+#include <string.h>
+
 #define SHARED_BY_PROCESSES 1
 
 // The zc_file struct is analogous to the FILE struct that you get from fopen.
@@ -331,6 +333,7 @@ off_t zc_lseek(zc_file *file, long offset, int whence) {
  **************/
 
 int zc_copyfile(const char *source, const char *dest) {
-  // To implement
+  memcpy(dest, src, strlen(source) + 1);
+  
   return -1;
 }
