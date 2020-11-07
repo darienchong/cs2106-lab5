@@ -233,8 +233,6 @@ char *zc_write_start(zc_file *file, size_t size) {
   	}
   	
   	_zc_extend_file(file, new_file_size);
-  	
-  	// What if mremap fails?
   }
   
   char *to_return = _zc_ptr_add_offset(file -> ptr, file -> offset);
@@ -254,8 +252,25 @@ void zc_write_end(zc_file *file) {
  **************/
 
 off_t zc_lseek(zc_file *file, long offset, int whence) {
-  // To implement
-  return -1;
+	off_t new_offset;
+	
+  switch (whence) {
+  	case SEEK_SET:
+  		new_offset = offset;
+  		break;
+  	case SEEK_CUR:
+  		new_offset = (file -> offset) + offset;
+  		break;
+  	case SEEK_END:
+  		new_offset = (file -> len) + offset;
+  		break;
+  	default:
+  		new_offset = -1;
+  		break;
+  }
+  
+  file -> offset = new_offset;
+  return new_offset;
 }
 
 /**************

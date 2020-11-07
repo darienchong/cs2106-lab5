@@ -290,7 +290,14 @@ int main(int argc, char *argv[]) {
       offset += write_size;
 
       rewind(file2);
-      FAIL_IF(fread(scratch, 1, sizeof(scratch), file2) != offset,
+      
+      size_t fread_elts_read = fread(scratch, 1, sizeof(scratch), file2);
+      
+      if (fread_elts_read != offset) {
+      	printf("fread returned wrong size - expected [%ld] but got [%ld].\n", offset, fread_elts_read);
+      }
+      
+      FAIL_IF(fread_elts_read != offset,
               "fread returned wrong size - did zc_write cause file to have wrong length?\n");
       FAIL_IF(memcmp(scratch, randdata, offset),
               "zc_write failed - wrong contents seen in file after zc_write_end\n");
