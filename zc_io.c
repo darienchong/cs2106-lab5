@@ -11,6 +11,10 @@
 #include <unistd.h>
 #include <sys/mman.h>
 
+#include <semaphore.h>
+
+#define SHARED_BY_PROCESSES 1
+
 // The zc_file struct is analogous to the FILE struct that you get from fopen.
 struct zc_file {
   bool is_debug;
@@ -19,6 +23,11 @@ struct zc_file {
   void *ptr;
   off_t len;
   off_t offset;
+  
+  int num_readers;
+
+  sem_t num_readers_sem; // Controls access to the `num_readers` shared variable.
+  sem_t write_lseek_sem; // If available, signals no one is writing/lseeking.
 };
 
 off_t _zc_get_file_size(int fd) {
@@ -76,6 +85,22 @@ void _zc_set_offset(zc_file *file, off_t new_offset) {
 	file -> offset = new_offset;
 }
 
+void _zc_acquire_num_readers_sem(zc_file *file) {
+	sem_wait(&(file -> num_readers_sem));
+}
+
+void _zc_release_num_readers_sem(zc_file *file) {
+	sem_post(&(file -> num_readers_sem));
+}
+
+void _zc_acquire_write_lseek_sem(zc_file *file) {
+	sem_wait(&(file -> write_lseek_sem));
+}
+
+void _zc_release_write_lseek_sem(zc_file *file) {
+	sem_post(&(file -> write_lseek_sem));
+}
+
 /**************
  * Exercise 1 *
  **************/
@@ -108,7 +133,7 @@ zc_file *zc_open(const char *path) {
   // If file_len == 0, then we know we've created a new file.
   // We need to extend it to be able to mmap() it.
   if (file_len == 0) {
-  	file_len = 4096;
+  	file_len = 1;
   	ftruncate(fd, file_len);
   }
   
@@ -131,11 +156,16 @@ zc_file *zc_open(const char *path) {
   	return NULL;
   }
   
+  sem_init(&(zc_file_ptr -> num_readers_sem), SHARED_BY_PROCESSES, 1);
+  sem_init(&(zc_file_ptr -> write_lseek_sem), SHARED_BY_PROCESSES, 1);
+  
   zc_file_ptr -> is_debug = true;
   zc_file_ptr -> fd = fd;
   zc_file_ptr -> ptr = ptr;
   zc_file_ptr -> len = file_len;
   zc_file_ptr -> offset = 0;
+  
+	zc_file_ptr -> num_readers = 0;
   
   return zc_file_ptr;
 }
@@ -144,6 +174,8 @@ int zc_close(zc_file *file) {
 	// munmap() triggers flushing to the file.
   int res = munmap(file -> ptr, file -> len);
   close(file -> fd);
+  sem_destroy(&(file -> num_readers_sem));
+  sem_destroy(&(file -> write_lseek_sem));
   
   if (res == -1) {
   	if (file -> is_debug) {
@@ -160,6 +192,13 @@ int zc_close(zc_file *file) {
 }
 
 const char *zc_read_start(zc_file *file, size_t *size) { 
+	_zc_acquire_num_readers_sem(file);
+	file -> num_readers = (file -> num_readers) + 1;
+	if (file -> num_readers == 1) {
+		_zc_acquire_write_lseek_sem(file);
+	}
+	_zc_release_num_readers_sem(file);
+	
   // Two cases
   // 1) We have >= *size bytes remaining
   // 2) We have < *size bytes remaining
@@ -204,6 +243,12 @@ const char *zc_read_start(zc_file *file, size_t *size) {
 }
 
 void zc_read_end(zc_file *file) {
+	_zc_acquire_num_readers_sem(file);
+	file -> num_readers = (file -> num_readers) - 1;
+	if (file -> num_readers == 0) {
+		_zc_release_write_lseek_sem(file);
+	}
+	_zc_release_num_readers_sem(file);
 }
 
 /**************
@@ -211,6 +256,8 @@ void zc_read_end(zc_file *file) {
  **************/
 
 char *zc_write_start(zc_file *file, size_t size) {
+	_zc_acquire_write_lseek_sem(file);
+	
   // Two cases
   // 1) Size requested extends beyond end of file.
   // 2) Size requested does not extend beyond end of file.
@@ -245,6 +292,8 @@ void zc_write_end(zc_file *file) {
 	// For now we just sync the entire mmap'd region
 	// Look into just syncing the original region?
   msync(file -> ptr, file -> len, MS_SYNC);
+  
+  _zc_release_write_lseek_sem(file);
 }
 
 /**************
@@ -252,6 +301,8 @@ void zc_write_end(zc_file *file) {
  **************/
 
 off_t zc_lseek(zc_file *file, long offset, int whence) {
+	_zc_acquire_write_lseek_sem(file);
+	
 	off_t new_offset;
 	
   switch (whence) {
@@ -270,6 +321,8 @@ off_t zc_lseek(zc_file *file, long offset, int whence) {
   }
   
   file -> offset = new_offset;
+  
+  _zc_release_write_lseek_sem(file);
   return new_offset;
 }
 
