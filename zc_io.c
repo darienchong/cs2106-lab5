@@ -33,7 +33,7 @@ struct zc_file {
 };
 
 off_t _zc_get_file_size(int fd) {
-	bool is_debug = true;
+	bool is_debug = false;
 
 	struct stat s;
 	if (fstat(fd, &s) == -1) {
@@ -108,7 +108,7 @@ void _zc_release_write_lseek_sem(zc_file *file) {
  **************/
 
 zc_file *zc_open(const char *path) {
-  bool is_debug = true;
+  bool is_debug = false;
   
   zc_file *zc_file_ptr = malloc(sizeof(zc_file));
   
@@ -161,7 +161,7 @@ zc_file *zc_open(const char *path) {
   sem_init(&(zc_file_ptr -> num_readers_sem), SHARED_BY_PROCESSES, 1);
   sem_init(&(zc_file_ptr -> write_lseek_sem), SHARED_BY_PROCESSES, 1);
   
-  zc_file_ptr -> is_debug = true;
+  zc_file_ptr -> is_debug = false;
   zc_file_ptr -> fd = fd;
   zc_file_ptr -> ptr = ptr;
   zc_file_ptr -> len = file_len;
@@ -333,7 +333,7 @@ off_t zc_lseek(zc_file *file, long offset, int whence) {
  **************/
 
 int zc_copyfile(const char *source, const char *dest) {
-  memcpy(dest, src, strlen(source) + 1);
+  memcpy(dest, source, strlen(source) + 1);
   
-  return -1;
+  return 0;
 }
