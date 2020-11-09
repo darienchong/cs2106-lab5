@@ -59,24 +59,40 @@ int _zc_mmap_flags() {
 	return MAP_SHARED;
 }
 
-void _zc_extend_file(zc_file *file, size_t new_size) {
+/**
+ * Returns 0 if successful, -1 otherwise.
+ */
+int _zc_resize_file(zc_file *file, size_t new_size) {
 	void *new_ptr = mremap(file -> ptr, file -> len, new_size, MREMAP_MAYMOVE);
 	
 	if (new_ptr == MAP_FAILED) {
 		if (file -> is_debug) {
 			int save_errno = errno;
-			printf("[_zc_extend_file(%d)]: mremap(%p, %ld, %ld, 0) return with err no [%d].\n", getpid(), file -> ptr, file -> len, new_size, save_errno);
+			printf("[_zc_resize_file(%d)]: mremap(%p, %ld, %ld, 0) return with err no [%d].\n", getpid(), file -> ptr, file -> len, new_size, save_errno);
 		}
+		
+		return -1;
 	} else {
 		if (file -> is_debug) {
-			printf("[_zc_extend_file(%d)]: mremap(%p, %ld, %ld, 0) successful, new pointer is [%p].\n", getpid(), file -> ptr, file -> len, new_size, new_ptr);
+			printf("[_zc_resize_file(%d)]: mremap(%p, %ld, %ld, 0) successful, new pointer is [%p].\n", getpid(), file -> ptr, file -> len, new_size, new_ptr);
 		}
 	}
 	
 	file -> len = new_size;
-	ftruncate(file -> fd, new_size);
+	int ftruncate_return_val = ftruncate(file -> fd, new_size);
+	
+	if (ftruncate_return_val == -1) {
+		if (file -> is_debug) {
+			int save_errno = errno;
+			printf("[_zc_resize_file(%d)]: ftruncate(%d, %ld) returned with err no [%d].\n", getpid(), file -> fd, new_size, save_errno);
+		}
+		
+		return -1;
+	}
 	
 	file -> ptr = new_ptr;
+	
+	return 0;
 }
 
 void _zc_advance_offset(zc_file *file, off_t advance) {
@@ -281,7 +297,7 @@ char *zc_write_start(zc_file *file, size_t size) {
   		printf("[zc_write_start(%d)]: Need to resize file from [%ld] to [%ld].\n", getpid(), file -> len, new_file_size);
   	}
   	
-  	_zc_extend_file(file, new_file_size);
+  	_zc_resize_file(file, new_file_size);
   }
   
   char *to_return = _zc_ptr_add_offset(file -> ptr, file -> offset);
@@ -333,7 +349,38 @@ off_t zc_lseek(zc_file *file, long offset, int whence) {
  **************/
 
 int zc_copyfile(const char *source, const char *dest) {
-  memcpy(dest, source, strlen(source) + 1);
+	bool is_debug = false;
+	
+  zc_file *src_file = zc_open(source);
+  zc_file *dest_file = zc_open(dest);
+  
+  if (src_file == NULL) {
+  	if (is_debug) {
+  		printf("[zc_copyfile(%d)]: Failed to create src_file from path [%s].\n", getpid(), source);
+  	}
+  	
+  	return -1;
+  }
+  
+  if (dest_file == NULL) {
+  	if (is_debug) {
+  		printf("[zc_copyfile(%d)]: Failed to create dest_file from path [%s].\n", getpid(), source);
+  	}
+  	
+  	return -1;
+  }
+  
+  int resz_file_result = _zc_resize_file(dest_file, src_file -> len);
+  
+  if (resz_file_result == -1) {
+  	if (is_debug) {
+  		printf("[zc_copyfile(%d)]: Failed to resize dest_file from [%ld] to [%ld].\n", getpid(), dest_file -> len, src_file -> len);
+  	}
+  	
+  	return -1;
+  }
+  
+  memcpy(dest_file -> ptr, src_file -> ptr, src_file -> len);
   
   return 0;
 }
