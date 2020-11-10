@@ -2,17 +2,13 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
 #include <errno.h>
 #include <unistd.h>
 #include <sys/mman.h>
-
 #include <semaphore.h>
-
 #include <string.h>
 
 #define SHARED_BY_PROCESSES 1
@@ -217,6 +213,15 @@ const char *zc_read_start(zc_file *file, size_t *size) {
 	}
 	_zc_release_num_readers_sem(file);
 	
+	// Check if the offset goes beyond the end of the file.
+	bool is_offset_beyond_eof = (file -> offset) > (file -> len);
+	
+	if (is_offset_beyond_eof) {
+		// Invalid offset, set bytes read to 0 and return an invalid pointer.
+		*size = 0;
+		return NULL;
+	}
+	
   // Two cases
   // 1) We have >= *size bytes remaining
   // 2) We have < *size bytes remaining
@@ -224,14 +229,6 @@ const char *zc_read_start(zc_file *file, size_t *size) {
   if (file -> is_debug) {
   	printf("[zc_read_start(%d)]: *size = [%ld].\n", getpid(), *size);
   	printf("[zc_read_start(%d)]: current offset = [%ld].\n", getpid(), file -> offset);
-  }
-  
-  bool sanity_check = ((file -> len) - (file -> offset)) >= 0;
-  
-  if (!sanity_check) {
-  	if (file -> is_debug) {
-  		printf("[zc_read_start(%d)]: [SANITY CHECK FAILED]: file_len - offset < 0.\n", getpid());
-  	}
   }
 
   bool is_file_has_less_than_size_rem = ((size_t) ((file -> len) - (file -> offset))) < *size;
@@ -336,6 +333,15 @@ off_t zc_lseek(zc_file *file, long offset, int whence) {
   	default:
   		new_offset = -1;
   		break;
+  }
+  
+  // Check here if zc_lseek() would set
+  // the offset to before the start of the file
+  // (offset < 0). If so, do not modify the offset
+  // and return (off_t) -1.
+  bool is_offset_before_start_of_file = new_offset < 0;
+  if (is_offset_before_start_of_file) {
+  	return -1;
   }
   
   file -> offset = new_offset;
