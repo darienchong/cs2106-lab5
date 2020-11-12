@@ -59,6 +59,10 @@ int _zc_mmap_flags() {
  * Returns 0 if successful, -1 otherwise.
  */
 int _zc_resize_file(zc_file *file, size_t new_size) {
+	if (new_size == (size_t) file -> len) {
+		return 0;
+	}
+	
 	void *new_ptr = mremap(file -> ptr, file -> len, new_size, MREMAP_MAYMOVE);
 	
 	if (new_ptr == MAP_FAILED) {
@@ -277,24 +281,13 @@ char *zc_write_start(zc_file *file, size_t size) {
   // 1) Size requested extends beyond end of file.
   // 2) Size requested does not extend beyond end of file.
   
-  bool sanity_check = ((file -> len) - (file -> offset)) >= 0;
-  bool is_go_past_eof = ((size_t) ((file -> len) - (file -> offset))) < size;
-  
-  if (!sanity_check) {
-  	if (file -> is_debug) {
-  		printf("[zc_write_start(%d)]: [SANITY CHECK FAILED]: len - offset = [%ld] < 0.\n", getpid(), (file->len - file->offset));
-  	}
-  }
+  size_t file_offset = file -> offset;
+  size_t file_len = file -> len;
+  bool is_go_past_eof = file_offset + size > file_len;
   
   if (is_go_past_eof) {
-  	size_t remaining_space = (size_t) ((file -> len) - (file -> offset));
-  	size_t new_file_size = (size_t) ((file -> len) + (size - remaining_space));
-  	
-  	if (file -> is_debug) {
-  		printf("[zc_write_start(%d)]: Need to resize file from [%ld] to [%ld].\n", getpid(), file -> len, new_file_size);
-  	}
-  	
-  	_zc_resize_file(file, new_file_size);
+  	size_t new_file_len = file_offset + size;
+  	_zc_resize_file(file, new_file_len);
   }
   
   char *to_return = _zc_ptr_add_offset(file -> ptr, file -> offset);
@@ -387,6 +380,9 @@ int zc_copyfile(const char *source, const char *dest) {
   }
   
   memcpy(dest_file -> ptr, src_file -> ptr, src_file -> len);
+  
+  zc_close(src_file);
+  zc_close(dest_file);
   
   return 0;
 }
